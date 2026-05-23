@@ -1,8 +1,8 @@
-# 📖 Data Dictionary — NOPI
+# Data Dictionary NOPI
 
 ---
 
-## Notebook 01 — Dataset Gambar (`manifest.csv`)
+## Notebook 01 — Dataset Gambar
 
 Dataset NOPI terdiri dari gambar struk dan non-struk yang telah melalui proses cleaning dan siap digunakan untuk training model CNN dan pipeline OCR.
 
