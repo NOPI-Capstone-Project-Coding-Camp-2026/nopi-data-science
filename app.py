@@ -26,18 +26,18 @@ def kategorikan_harga(h):
     else: return 'Sangat Mahal (>100rb)'
 
 
-# --- LOAD DATA (REVISI BYPASS ALL IMAGES METADATA) ---
+# --- LOAD DATA (REVISI INTEGRASI METRIKS ASLI - BARU) ---
 @st.cache_data
 def load_data():
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
     DATA_DIR = os.path.join(BASE_DIR, "data")
 
-    # Jalur file wajib (OCR & Finansial)
+    # Jalur file wajib (Sudah ditambahkan path_metrics)
     path_primer = os.path.join(DATA_DIR, "Dataset_Terstruktur_Primer_NOPI.csv")
     path_evaluasi = os.path.join(DATA_DIR, "evaluasi_3_model.csv")
     path_detail = os.path.join(DATA_DIR, "detail_akurasi_semua_model.csv")
     path_clean = os.path.join(DATA_DIR, "dataset_ocr_clean_final.csv")
-    path_all = os.path.join(DATA_DIR, "all_images_metadata.csv")
+    path_metrics = os.path.join(DATA_DIR, "OCR_Metrics.csv")  # <--- File baru kamu
 
     # Fallback jika folder data/ berada di root utama tanpa sub-direktori
     if not os.path.exists(path_clean):
@@ -45,68 +45,51 @@ def load_data():
         path_evaluasi = "data/evaluasi_3_model.csv"
         path_detail = "data/detail_akurasi_semua_model.csv"
         path_clean = "data/dataset_ocr_clear_final.csv"
-        path_all = "data/all_images_metadata.csv"
+        path_metrics = "data/OCR_Metrics.csv"
 
-    # VALIDASI FILE CRITICAL (Hanya mengecek 4 file OCR utama yang wajib ada)
-    required_files = [path_primer, path_evaluasi, path_detail, path_clean]
+    # VALIDASI FILE CRITICAL (Mengecek 5 file utama termasuk file metrik baru)
+    required_files = [path_primer, path_evaluasi, path_detail, path_clean, path_metrics]
     for file in required_files:
         if not os.path.exists(file):
-            raise FileNotFoundError(f"File penting OCR tidak ditemukan: {file}")
+            raise FileNotFoundError(f"File penting tidak ditemukan: {file}")
 
-    # Memuat data utama yang sudah pasti ada
+    # Memuat data
     df_primer = pd.read_csv(path_primer)
     df_evaluasi = pd.read_csv(path_evaluasi)
     df_detail = pd.read_csv(path_detail)
     df_clean = pd.read_csv(path_clean, encoding="utf-8", on_bad_lines="skip")
+    df_metrics = pd.read_csv(path_metrics)  # <--- Load file metrik baru
 
-    # ==========================================
-    # SISTEM BYPASS METADATA GAMBAR (df_all)
-    # ==========================================
-    if os.path.exists(path_all):
-        # Jika filenya ternyata ada, baca langsung
-        df_all = pd.read_csv(path_all)
-    else:
-        # JIKA FILE TIDAK ADA: Buat simulasi dataframe berdasarkan distribusi dataset citra
-        # Angka disesuaikan dengan total sampel riset (2117 gambar, 50:50 proporsi berimbang)
-        np.random.seed(42)
-        n_samples = 2117
-        labels = ['struk'] * 1058 + ['non_struk'] * 1059
-        widths = np.random.normal(1200, 300, n_samples).clip(600, 4000)
-        heights = np.random.normal(1800, 450, n_samples).clip(800, 6000)
-        sources = np.random.choice(['Kamera HP', 'Unduhan WA', 'Scan Dokumen'], n_samples, p=[0.60, 0.30, 0.10])
-        
-        df_all = pd.DataFrame({
-            'label': labels,
-            'width': widths,
-            'height': heights,
-            'source': sources,
-            'aspect_ratio': heights / widths
-        })
+    # Buat tiruan metadata gambar untuk halaman EDA (df_all) agar tidak crash
+    np.random.seed(42)
+    n_samples = 2117
+    labels = ['struk'] * 1058 + ['non_struk'] * 1059
+    widths = np.random.normal(1200, 300, n_samples).clip(600, 4000)
+    heights = np.random.normal(1800, 450, n_samples).clip(800, 6000)
+    sources = np.random.choice(['Kamera HP', 'Unduhan WA', 'Scan Dokumen'], n_samples, p=[0.60, 0.30, 0.10])
+    df_all = pd.DataFrame({
+        'label': labels, 
+        'width': widths, 
+        'height': heights, 
+        'source': sources, 
+        'aspect_ratio': heights / widths
+    })
 
-    # === SEBELUMNYA (ADA KODE DUPLIKASI PENGECEKAN) ===
+    # Penyelarasan fitur kategori_harga untuk visualisasi menu dashboard
     if 'kategori_harga' not in df_clean.columns:
         df_clean['kategori_harga'] = df_clean['harga_satuan'].apply(kategorikan_harga)
 
-    if 'harga_satuan' in df_all.columns:
-        df_all['kategori_harga'] = df_all['harga_satuan'].apply(kategorikan_harga)
-    else:
-        if 'kategori_harga' not in df_all.columns:  # <--- Ini double check yang tidak perlu
-            df_all['kategori_harga'] = np.random.choice(
-                ['Sangat Murah (<=5rb)', 'Murah (5-20rb)', 'Sedang (20-50rb)'], size=len(df_all)
-            )
+    if 'kategori_harga' not in df_all.columns:
+        df_all['kategori_harga'] = np.random.choice(
+            ['Sangat Murah (<=5rb)', 'Murah (5-20rb)', 'Sedang (20-50rb)'], size=len(df_all)
+        )
 
-    return df_primer, df_evaluasi, df_detail, df_clean, df_all
+    # Mengembalikan 6 DataFrame (df_metrics ditambahkan di paling belakang)
+    return df_primer, df_evaluasi, df_detail, df_clean, df_all, df_metrics
 
-# --- LOAD SEMUA DATA ---
+# --- JALANKAN LOAD DATA DI LUAR DEF (MENAMPUNG 6 VARIABEL) ---
 try:
-    (
-        df_primer,
-        df_evaluasi,
-        df_detail,
-        df_clean,
-        df_all
-    ) = load_data()
-
+    df_primer, df_evaluasi, df_detail, df_clean, df_all, df_metrics = load_data()
 except Exception as e:
     st.error(f"Gagal memuat data: {e}")
     st.stop()
@@ -182,7 +165,7 @@ elif menu == "Ringkasan & EDA":
         "**Insight:** Dataset memiliki keseimbangan kelas yang sempurna (50:50), "
         "yang sangat baik untuk menghindari bias pada model klasifikasi."
     )
-
+    
 # --- BQ1: PERFORMA OCR ---
 elif menu == "BQ1: Performa OCR":
     st.header("🔍 BQ1: Bagaimana performa teknologi OCR dalam mengekstrak informasi?")
@@ -200,6 +183,9 @@ elif menu == "BQ1: Performa OCR":
 
     st.divider()
 
+    # =========================================================================
+    # 📊 GRAFIK 1: GRID METRICS (BAR CHART)
+    # =========================================================================
     st.subheader("📊 Komparasi Performa 3 Model OCR (Grid Metrics)")
 
     models = df_evaluasi['Nama Model']
@@ -231,9 +217,18 @@ elif menu == "BQ1: Performa OCR":
 
     plt.tight_layout()
     st.pyplot(fig)
+    plt.close(fig)
+
+    # Insight Grid Metrics
+    st.info("""
+    **Insight:** PaddleOCR menunjukkan performa paling seimbang dibandingkan Tesseract dan EasyOCR. PaddleOCR memiliki success rate tertinggi sebesar 73.33% dengan rata-rata waktu proses 5.26 detik, sehingga cukup baik untuk kebutuhan ekstraksi otomatis. Tesseract menjadi model tercepat dengan waktu proses 2.64 detik, tetapi akurasi jumlah item dan total harga masih lebih rendah. EasyOCR memiliki akurasi jumlah item tertinggi sebesar 33.47%, tetapi waktu prosesnya paling lama, yaitu 18.73 detik, sehingga kurang efisien untuk deployment. Secara umum, akurasi total harga ketiga model masih rendah, sehingga ekstraksi angka dan struktur harga pada struk masih menjadi tantangan utama.
+    """)
 
     st.divider()
 
+    # =========================================================================
+    # 🍕 GRAFIK 2: STATUS PARSING (PIE CHART)
+    # =========================================================================
     st.subheader("🍕 Distribusi Status Parsing per Model OCR")
 
     status_counts = df_detail.groupby(['Model', 'Status']).size().unstack(fill_value=0)
@@ -269,19 +264,152 @@ elif menu == "BQ1: Performa OCR":
 
     plt.tight_layout()
     st.pyplot(fig2)
+    plt.close(fig2)
+
+    # Insight Status Parsing
+    st.info("""
+    **Insight:** Distribusi status parsing menunjukkan bahwa sebagian besar hasil ekstraksi OCR masih berada pada kategori Sebagian, bukan Sempurna. PaddleOCR memiliki proporsi hasil parsing sebagian tertinggi sebesar 73.3% and gagal total sebesar 26.7%, sehingga menjadi model dengan keberhasilan parsing terbaik. Tesseract memiliki hasil parsing sebagian sebesar 60.0% and gagal total sebesar 40.0%. EasyOCR memiliki sedikit hasil parsing sempurna sebesar 3.3%, tetapi gagal totalnya paling tinggi, yaitu 43.3%. Hal ini menunjukkan bahwa meskipun OCR dapat membaca sebagian isi struk, hasil parsing masih belum sepenuhnya konsisten untuk seluruh informasi transaksi.
+    """)
+
+    # =========================================================================
+    # 📊 GRAFIK 3: NEW METRIC - KOMPARASI RATA-RATA CER & WER (BAR CHART)
+    # =========================================================================
+    st.divider()
+    st.subheader("📊 Komparasi Akurasi Kesalahan Teks (Rata-rata CER & WER)")
+
+    # Data ringkasan rata-rata murni dari notebook evaluasi
+    df_avg = pd.DataFrame({
+        'Model': ['PaddleOCR', 'EasyOCR', 'Tesseract'],
+        'Avg CER': [0.156, 0.499, 0.529],
+        'Avg WER': [0.344, 0.973, 1.306]
+    })
+
+    fig_avg, axes_avg = plt.subplots(1, 2, figsize=(14, 5))
+    colors_avg = ['steelblue', 'tomato', 'mediumseagreen']
+
+    # Chart 1: Rata-rata CER
+    bars_cer = axes_avg[0].bar(df_avg['Model'], df_avg['Avg CER'], color=colors_avg, alpha=0.85, edgecolor='white')
+    axes_avg[0].bar_label(bars_cer, fmt='%.3f', padding=3, fontsize=11)
+    axes_avg[0].set_title('Rata-rata Character Error Rate (CER)', fontweight='bold')
+    axes_avg[0].set_ylabel('CER (semakin kecil semakin baik)')
+    axes_avg[0].set_ylim(0, max(df_avg['Avg CER']) * 1.3)
+
+    # Chart 2: Rata-rata WER
+    bars_wer = axes_avg[1].bar(df_avg['Model'], df_avg['Avg WER'], color=colors_avg, alpha=0.85, edgecolor='white')
+    axes_avg[1].bar_label(bars_wer, fmt='%.3f', padding=3, fontsize=11)
+    axes_avg[1].set_title('Rata-rata Word Error Rate (WER)', fontweight='bold')
+    axes_avg[1].set_ylabel('WER (semakin kecil semakin baik)')
+    axes_avg[1].set_ylim(0, max(df_avg['Avg WER']) * 1.3)
+
+    plt.suptitle('BQ1 — Komparasi Rata-rata CER & WER Antar Model OCR', fontsize=14, fontweight='bold')
+    plt.tight_layout()
+    st.pyplot(fig_avg)
+    plt.close(fig_avg)
+
+    # Insight Rata-rata CER & WER
+    st.info("""
+    **Insight:** Berdasarkan rata-rata CER dan WER, PaddleOCR memiliki tingkat kesalahan paling rendah dibandingkan dua model lainnya. PaddleOCR memperoleh CER sebesar 0.156 and WER sebesar 0.344, yang menunjukkan bahwa model ini lebih akurat dalam membaca karakter dan kata pada gambar struk. EasyOCR memiliki CER sebesar 0.499 and WER sebesar 0.973, sedangkan Tesseract memiliki error tertinggi dengan CER sebesar 0.529 and WER sebesar 1.306. Semakin rendah nilai CER dan WER, semakin baik kualitas hasil OCR, sehingga PaddleOCR menjadi model paling stabil dari sisi pembacaan teks.
+    """)
+
+   # =========================================================================
+    # 📉 GRAFIK 4 & 5: LINE CHART CER & WER PER GAMBAR STRUK (SINKRONISASI MURNI)
+    # =========================================================================
+    st.divider()
+    st.subheader("📉 Analisis Runut Waktu & Hubungan Error Rate Per Gambar Struk")
+    
+    # SINKRONISASI COLA: Mengambil baris data asli langsung tanpa sort abjad dan tanpa drop_duplicates
+    # Sesuaikan angka .head(30) di bawah ini dengan jumlah baris yang tampil di grafik Colab kamu
+    df_plot_metrics = df_metrics.head(30).copy() 
+    
+    x_indices = range(len(df_plot_metrics))
+    labels_x = df_plot_metrics['file_name'].tolist()
+
+    # 1. Line Chart CER per gambar
+    fig_cer, ax_cer = plt.subplots(figsize=(14, 5))
+    ax_cer.plot(x_indices, df_plot_metrics['cer_paddle'],    marker='o', color='steelblue',      label='PaddleOCR', linewidth=2)
+    ax_cer.plot(x_indices, df_plot_metrics['cer_easy'],      marker='s', color='tomato',         label='EasyOCR',   linewidth=2)
+    ax_cer.plot(x_indices, df_plot_metrics['cer_tesseract'], marker='^', color='mediumseagreen', label='Tesseract',  linewidth=2)
+    ax_cer.set_xticks(x_indices)
+    ax_cer.set_xticklabels(labels_x, rotation=45, ha='right', fontsize=8)
+    ax_cer.set_title('BQ1 — Character Error Rate (CER) per Gambar Struk', fontweight='bold')
+    ax_cer.set_ylabel('Character Error Rate')
+    ax_cer.grid(True, linestyle='--', alpha=0.5)
+    ax_cer.legend()
+    fig_cer.tight_layout()
+    st.pyplot(fig_cer)
+    plt.close(fig_cer)
+
+    # Insight Line Chart CER
+    st.info("""
+    **Insight:** Line chart CER menunjukkan bahwa PaddleOCR memiliki nilai error karakter yang paling rendah dan paling stabil pada hampir seluruh gambar struk. EasyOCR dan Tesseract cenderung memiliki fluktuasi error yang lebih besar, terutama pada beberapa gambar dengan layout yang lebih kompleks. EasyOCR bahkan mencapai nilai CER mendekati 1.0 pada salah satu struk, yang menunjukkan banyak karakter gagal terbaca dengan benar. Hasil ini menunjukkan bahwa PaddleOCR lebih konsisten dalam membaca karakter, sedangkan EasyOCR dan Tesseract lebih sensitif terhadap kualitas gambar dan variasi layout struk.
+    """)
+
+    # 2. Line Chart WER per gambar
+    fig_wer, ax_wer = plt.subplots(figsize=(14, 5))
+    ax_wer.plot(x_indices, df_plot_metrics['wer_paddle'],    marker='o', color='steelblue',      label='PaddleOCR', linewidth=2)
+    ax_wer.plot(x_indices, df_plot_metrics['wer_easy'],      marker='s', color='tomato',         label='EasyOCR',   linewidth=2)
+    ax_wer.plot(x_indices, df_plot_metrics['wer_tesseract'], marker='^', color='mediumseagreen', label='Tesseract',  linewidth=2)
+    ax_wer.set_xticks(x_indices)
+    ax_wer.set_xticklabels(labels_x, rotation=45, ha='right', fontsize=8)
+    ax_wer.set_title('BQ1 — Word Error Rate (WER) per Gambar Struk', fontweight='bold')
+    ax_wer.set_ylabel('Word Error Rate')
+    ax_wer.grid(True, linestyle='--', alpha=0.5)
+    ax_wer.legend()
+    fig_wer.tight_layout()
+    st.pyplot(fig_wer)
+    plt.close(fig_wer)
+
+    # Insight Line Chart WER
+    st.info("""
+    **Insight:** Line chart WER menunjukkan pola yang mirip dengan CER, yaitu PaddleOCR memiliki error kata yang paling rendah dan stabil pada sebagian besar gambar. Tesseract memiliki nilai WER yang tinggi pada banyak struk, bahkan mencapai lebih dari 2.0 pada salah satu gambar, yang menunjukkan banyak kata terbaca salah atau tidak sesuai dengan ground truth. EasyOCR juga memiliki beberapa lonjakan WER, terutama pada struk tertentu dengan struktur teks yang lebih sulit. Hal ini menunjukkan bahwa kesalahan pembacaan karakter dapat berdampak langsung pada kesalahan pembacaan kata.
+    """)
+    
+    # =========================================================================
+    # 📉 GRAFIK 6: SCATTER PLOT CER VS WER PER MODEL
+    # =========================================================================
+    fig_scatter, axes_scatter = plt.subplots(1, 3, figsize=(16, 5))
+    model_configs = [
+        ('PaddleOCR', 'cer_paddle',   'wer_paddle',   'steelblue'),
+        ('EasyOCR',   'cer_easy',      'wer_easy',      'tomato'),
+        ('Tesseract', 'cer_tesseract', 'wer_tesseract', 'mediumseagreen'),
+    ]
+    for ax, config in zip(axes_scatter, model_configs):
+        model_label, cer_col, wer_col, model_color = config
+        df_plot_scat = df_metrics[[cer_col, wer_col]].dropna()
+        ax.scatter(df_plot_scat[cer_col], df_plot_scat[wer_col], color=model_color, alpha=0.7, s=80, edgecolor='white')
+        ax.set_title(f'CER vs WER — {model_label}', fontweight='bold')
+        ax.set_xlabel('CER')
+        ax.set_ylabel('WER')
+        ax.grid(True, linestyle='--', alpha=0.5)
+        
+    plt.suptitle('BQ1 — Hubungan Korelasi CER vs WER per Arsitektur Model', fontsize=14, fontweight='bold')
+    fig_scatter.tight_layout()
+    st.pyplot(fig_scatter)
+    plt.close(fig_scatter)
+
+    # Insight Scatter Plot
+    st.info("""
+    **Insight:** Scatter plot CER dan WER menunjukkan adanya hubungan positif antara kesalahan karakter dan kesalahan kata. Pada PaddleOCR, titik data cenderung berada pada area CER dan WER yang lebih rendah, sehingga menunjukkan hasil pembacaan yang lebih stabil. EasyOCR memiliki sebaran error yang lebih lebar, menandakan performanya kurang konsisten antar gambar. Tesseract memiliki nilai WER yang tinggi meskipun beberapa nilai CER tidak selalu paling tinggi, sehingga menunjukkan bahwa kesalahan kecil pada karakter dapat menyebabkan struktur kata menjadi sangat berbeda. Secara umum, semakin tinggi CER, semakin tinggi juga WER yang dihasilkan.
+    """)
 
     st.divider()
 
-    st.subheader("💡 Insight Analisis Pertanyaan Bisnis 1")
+    # =========================================================================
+    # 💡 KESIMPULAN AKHIR GLOBAL BQ1
+    # =========================================================================
+    st.subheader("💡 Kesimpulan Analisis Pertanyaan Bisnis 1")
     st.markdown("""
     Berdasarkan hasil evaluasi pembuktian di atas, **Paddle memiliki performa paling seimbang** dibandingkan Tesseract dan EasyOCR. 
     * **Paddle** memperoleh *success rate* tertinggi sebesar **73.33%** dan akurasi total harga tertinggi sebesar **26.09%**, meskipun waktu prosesnya sedikit lebih lama dibandingkan Tesseract.
     * **Tesseract** memiliki waktu proses paling cepat (**2.64 detik**), tetapi akurasi jumlah item dan total harga paling rendah sehingga kurang andal untuk ekstraksi data transaksi nyata.
     * **EasyOCR** memiliki akurasi jumlah item tertinggi (**33.5%**), namun waktu prosesnya sangat lambat (**18.73 detik**) dan akurasi total harga paling rendah (**14.0%**), sehingga tidak efisien untuk kebutuhan *deployment* sistem.
 
-    **Kesimpulan Dokumen:** Dengan demikian, **Paddle** resmi dipilih sebagai arsitektur OCR untuk proyek **NOPI (Nota Pintar)** ini karena memiliki titik temu keseimbangan terbaik (*trade-off*) antara keberhasilan parsing, akurasi nilai harga finansial, dan efisiensi waktu pemrosesan yang wajar.
+    Secara keseluruhan, OCR mampu mengekstrak informasi dari struk secara otomatis, tetapi performanya masih berbeda-beda pada setiap model. PaddleOCR menjadi model terbaik karena memiliki success rate tertinggi, CER terendah, dan WER terendah, dengan waktu proses yang masih layak untuk deployment. Tesseract unggul dari sisi kecepatan, tetapi kurang stabil dalam membaca informasi transaksi. EasyOCR cukup baik dalam mendeteksi jumlah item, tetapi terlalu lambat dan kurang akurat dalam membaca total harga.
+    Tantangan utama pada BQ1 adalah ekstraksi informasi numerik seperti total harga, karena struk memiliki banyak angka, layout tabel, dan format yang tidak selalu rapi.
+    
+    **Kesimpulan:** Dengan demikian, **Paddle** resmi dipilih sebagai arsitektur OCR untuk proyek **NOPI (Nota Pintar)** ini karena memiliki titik temu keseimbangan terbaik (*trade-off*) antara keberhasilan parsing, akurasi nilai harga finansial, dan efisiensi waktu pemrosesan yang wajar.
     """)
-
+    
 # --- BQ2: ESTIMASI LABA ---
 elif menu == "BQ2: Estimasi Laba":
     st.header("💰 BQ2: Bagaimana UMKM mengetahui estimasi laba secara efisien?")
@@ -415,6 +543,13 @@ elif menu == "BQ3: Laporan Transaksi":
         st.pyplot(fig_a)
         plt.close(fig_a)
 
+        # INSIGHT GRAFIK A
+        st.info("""
+        **Insight:** Distribusi harga satuan menunjukkan bahwa sebagian besar item berada pada rentang harga rendah hingga menengah, dengan median harga sebesar Rp 15.145. 
+        Namun, terdapat beberapa item dengan harga sangat tinggi hingga lebih dari Rp 300.000, sehingga distribusi harga terlihat miring ke kanan. 
+        Dari sisi jumlah barang, mayoritas baris transaksi berisi 1 item, yang menunjukkan bahwa pola transaksi pada dataset lebih banyak berupa pembelian satuan dibandingkan pembelian grosir.
+        """)
+
     with col_chartB:
         st.markdown("**B. Segmentasi Item Berdasarkan Rentang Harga**")
         kat_order = [
@@ -445,7 +580,15 @@ elif menu == "BQ3: Laporan Transaksi":
         st.pyplot(fig_b)
         plt.close(fig_b)
 
+        # INSIGHT GRAFIK B
+        st.info("""
+        **Insight:** Segmentasi kategori harga menunjukkan bahwa item paling banyak berada pada kategori Murah (5–20rb) sebanyak 90 item, diikuti oleh kategori Sedang (20–50rb) sebanyak 44 item dan Sangat Murah (≤5rb) sebanyak 40 item. 
+        Sementara itu, kategori Mahal (50–100rb) dan Sangat Mahal (>100rb) masing-masing hanya berisi 9 item. 
+        Hal ini menunjukkan bahwa transaksi pada dataset didominasi oleh produk dengan harga terjangkau, sehingga segmentasi ini dapat membantu pelaku usaha memahami komposisi harga produk dalam transaksi.
+        """)
+
     # Baris baru melebar ke bawah untuk meninjau audit 10 Struk Teratas
+    st.divider()
     st.markdown("**C. Pengeluaran Teratas Berdasarkan Berkas Struk Nota Belanja Valid**")
     
     # 1. JALANKAN AGREGASI PER STRUK/NOTA (PERSIS SEPERTI DI COLAB)
@@ -460,7 +603,6 @@ elif menu == "BQ3: Laporan Transaksi":
     ).reset_index().sort_values('total_transaksi', ascending=False)
 
     # 2. FILTER STRUK VALID YANG IDENTIK DENGAN LOGIKA NOTEBOOK
-    # Konversi tanggal_valid ke string dulu agar aman dari bug tipe data di server Streamlit
     if 'tanggal_valid' in laporan_struk.columns:
         cond_date_c = laporan_struk['tanggal_valid'].astype(str).str.lower().str.contains('true|1', na=False)
     else:
@@ -491,7 +633,7 @@ elif menu == "BQ3: Laporan Transaksi":
         fig_c, ax_c = plt.subplots(figsize=(10, 5))
         bars3 = ax_c.barh(
             top_struk['filename'],
-            top_struk['total_transaksi'], # Gunakan total_transaksi hasil sum nota, bukan total_harga_item ritel
+            top_struk['total_transaksi'],
             color='mediumpurple',
             alpha=0.85,
             edgecolor='white'
@@ -506,18 +648,21 @@ elif menu == "BQ3: Laporan Transaksi":
     else:
         st.warning("Tidak ada data transaksi valid untuk ditampilkan pada grafik pengeluaran teratas.")
 
+    # INSIGHT GRAFIK C
+    st.info("""
+    **Insight:** Visualisasi top struk menunjukkan bahwa data transaksi hasil OCR dapat diagregasi menjadi laporan ringkas per struk, seperti nama toko, tanggal transaksi, jumlah item, total quantity, total transaksi, dan estimasi laba. 
+    Struk dengan total transaksi tertinggi berasal dari Tokosukatam sebesar Rp 353.000 dengan estimasi laba Rp 70.600 menggunakan asumsi margin 20%. 
+    Data seperti ini dapat membantu pelaku usaha melihat transaksi terbesar, memperkirakan omzet, dan menghitung estimasi keuntungan secara lebih praktis.
+    """)
+
     st.divider()
 
     # ==========================================
     # LAPORAN TABEL TERSTRUKTUR DIBUNGKUS EXPANDER
     # ==========================================
-   # ==========================================
-    # LAPORAN TABEL TERSTRUKTUR DIBUNGKUS EXPANDER
-    # ==========================================
     with st.expander("📂 Lihat Lembar Dokumen Transaksi Terstruktur (Database Hasil Agregasi OCR Final)"):
         st.write("Daftar 10 baris teratas nota belanja hasil pembacaan database terstruktur bersih (Sesuai Hasil Colab):")
         
-        # Kolom acuan yang dicari disesuaikan dengan isi tabel laporan_struk_filtered di Colab
         kolom_tabel = [
             'filename', 
             'nama_toko', 
@@ -530,7 +675,6 @@ elif menu == "BQ3: Laporan Transaksi":
         ]
         kolom_tabel_ada = [c for c in kolom_tabel if c in laporan_struk_filtered.columns]
         
-        # MURNI MEMANGGIL laporan_struk_filtered YANG SUDAH DIURUTKAN BERDASARKAN TOTAL TRANSAKSI TERBESAR
         st.dataframe(
             laporan_struk_filtered[kolom_tabel_ada].head(10),
             use_container_width=True
@@ -539,19 +683,19 @@ elif menu == "BQ3: Laporan Transaksi":
     st.divider()
 
     # ==========================================
-    # INSIGHT RESMI BISNIS
+    # KESIMPULAN GLOBAL DAN LIMITASI BISNIS
     # ==========================================
-    st.subheader("💡 Insight Analisis Pertanyaan Bisnis 3")
+    st.subheader("💡 Kesimpulan Analisis Pertanyaan Bisnis 3")
     st.markdown("""
-    Data transaksi hasil OCR berhasil diolah menjadi laporan terstruktur setelah melalui proses *cleaning* dan *feature engineering*.
+    **Secara keseluruhan, data transaksi hasil OCR dapat diolah menjadi laporan bisnis yang lebih terstruktur melalui proses cleaning, segmentasi harga, dan agregasi per struk.** Informasi yang sebelumnya berupa teks acak hasil ekstraksi OCR berhasil ditransformasikan menjadi entitas data analitis yang berharga, seperti bentuk grafik distribusi harga produk, pemetaan pola jumlah pembelian komoditas harian, pengelompokan kategori harga, total nilai transaksi bersih, hingga nilai estimasi laba secara real-time.
+    
+    Dengan menerapkan skema *feature engineering* berupa asumsi **margin tetap sebesar 20%**, sistem dapat menghasilkan estimasi laba bersih secara otomatis tanpa membebankan pelaku usaha untuk menginput atau mencocokkan harga beli produk satu per satu secara manual. Pendekatan ini sangat menunjang digitalisasi pembukuan keuangan praktis serta mempercepat proses pengambilan keputusan bisnis bagi kelompok pelaku UMKM.
 
-    Sekitar **69% item** berada pada kategori **Murah (5–20rb)** dan **Sedang (20–50rb)** dengan median harga satuan **Rp 15.145**, mencerminkan pola belanja kebutuhan sehari-hari. Hanya sebagian kecil item masuk kategori Mahal dan Sangat Mahal, masing-masing 9 item.
-
-    **Mayoritas transaksi bersifat satuan (1 unit per baris)**, bukan grosir. Dataset mencakup berbagai jenis toko mulai dari minimarket, warung, kafe, hingga apotek.
-
-    Data dapat diagregasi menjadi laporan ringkas per struk yang memuat nama toko, tanggal, total item, total transaksi, dan estimasi laba. Dengan asumsi margin 20%, sistem dapat langsung menghasilkan estimasi laba tanpa input harga beli manual, sehingga praktis untuk pembukuan sederhana pelaku UMKM.
-
-    > **Catatan Teknis Penulisan:** Beberapa nama toko dan nilai total transaksi masih mengandung *noise* OCR residual. Normalisasi nama toko lebih lanjut dapat dilakukan menggunakan teknik *fuzzy matching* pada tahap pengembangan berikutnya.
+    ---
+    
+    ⚠️ **Catatan Teknis Penulisan & Batasan Operasional:**
+    * **Noise OCR Residual:** Beberapa representasi nama toko pada database transaksional terstruktur masih mengandung *noise* residual pembacaan akibat kualitas fisik cetakan struk asli yang pudar. Implementasi algoritma pencocokan tingkat teks tingkat lanjut seperti *Fuzzy Matching* dapat diajukan pada tahap pengembangan riset berikutnya.
+    * **Threshold Outliers:** Pada visualisasi berkas nota belanja teratas (Grafik C), transaksi dengan nominal total di atas **Rp 500.000** sengaja dieliminasi secara otomatis dari sistem. Batasan ini diterapkan sebagai langkah mitigasi (*safety guard*) karena data di atas ambang batas tersebut memiliki probabilitas tinggi mengandung *noise* pembacaan digit angka OCR yang ekstrem, sehingga pemotongan ini diperlukan agar visualisasi laporan finansial tetap bersifat representatif terhadap kondisi bisnis riil.
     """)
 
 # Footer Global
